@@ -1,0 +1,88 @@
+version: 2
+
+models:
+  - name: fct_positions_eur
+    description: >
+      Look-through of the fund in EUR: one row per holding and per quarter-end.
+      Replaces PROCEDURE load_positions and table RPT_POSITION_EUR.
+    config:
+      materialized: table
+    data_tests:
+      - unique_combination:
+          arguments: {columns: [report_date, line_no]}
+    columns:
+      - name: report_date
+        data_tests: [not_null]
+      - name: line_no
+        data_tests: [not_null]
+      - name: security_id
+        data_tests: [not_null]
+      - name: isin
+      - name: issuer_name
+      - name: asset_cat
+      - name: is_cash_equivalent
+      - name: currency
+      - name: inv_country
+        description: "Country where the issuer is incorporated, as published by the fund."
+      - name: risk_country
+        description: >
+          Country of risk used in the look-through. Equal to inv_country, except when
+          ref_risk_country_override gives another one (rule taken from PKG_LOOKTHROUGH_EUR.risk_country).
+        data_tests: [not_null]
+      - name: val_usd
+        description: "Value in USD, as published by the fund."
+        data_tests: [not_null]
+      - name: val_local
+        description: "Value in the currency of the security: val_usd x fund_fx_per_usd, rounded to the cent."
+        data_tests: [not_null]
+      - name: ecb_rate
+        description: "ECB rate of the security's currency at the quarter-end (units of currency for 1 EUR)."
+      - name: val_eur
+        description: >
+          Value in EUR, rounded to the cent. Must never be empty.
+          ECB method: val_local / ecb_rate. When the ECB does not quote the currency (CLP),
+          cross via the dollar: val_usd / ECB rate of USD.
+        data_tests: [not_null]
+      - name: fx_method
+        description: "How val_eur was computed: ECB (rate of the currency) or USD_CROSS (via the dollar)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments: {values: ["ECB", "USD_CROSS"]}
+
+  - name: fct_fund_quarter_eur
+    description: >
+      Quarterly summary of the fund in EUR. Replaces PROCEDURE load_summary and table RPT_FUND_EUR.
+    config:
+      materialized: table
+    columns:
+      - name: report_date
+        data_tests: [unique, not_null]
+      - name: nb_positions
+        description: "Number of lines in the look-through (all of them, cash equivalents included)."
+      - name: net_assets_usd
+        description: "Net assets declared by the fund to the SEC."
+      - name: eurusd_rate
+        description: "ECB rate of the dollar at the quarter-end."
+      - name: net_assets_eur
+        description: "net_assets_usd / eurusd_rate."
+        data_tests: [not_null, strictly_positive]
+      - name: securities_eur
+        description: "Sum of the positions in EUR, excluding cash equivalents (repos)."
+        data_tests: [not_null, strictly_positive]
+      - name: cash_and_other_eur
+        description: "net_assets_eur - securities_eur: cash, repos, receivables and payables."
+      - name: net_flows_eur
+        description: "Subscriptions + reinvested dividends - redemptions over the quarter, in EUR."
+        data_tests: [not_null]
+
+  - name: rpt_reconciliation_positions
+    description: >
+      Line-by-line comparison of fct_positions_eur with the legacy output RPT_POSITION_EUR.
+      Every line is either identical, or different for a documented reason (a legacy bug fixed).
+    config:
+      materialized: table
+    columns:
+      - name: status
+        description: "identical | fixed: <reason> | UNEXPLAINED (must never happen)."
+        data_tests: [not_null]

@@ -1,0 +1,116 @@
+name: oakmark_lookthrough
+version: "1.0.0"
+config-version: 2
+profile: oakmark_lookthrough
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+flags:
+  send_anonymous_usage_stats: false
+
+models:
+  oakmark_lookthrough:
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    marts:
+      +materialized: table
+      +schema: marts
+
+seeds:
+  oakmark_lookthrough:
+    +schema: raw
+    raw_nport_fund:
+      +column_types:
+        report_date: date
+        tot_assets: decimal(38,8)
+        tot_liabs: decimal(38,8)
+        net_assets: decimal(38,8)
+    raw_nport_flows:
+      +column_types:
+        report_date: date
+        sales: decimal(38,8)
+        reinvestment: decimal(38,8)
+        redemption: decimal(38,8)
+    raw_nport_holdings:
+      +column_types:
+        report_date: date
+        isin: varchar
+        other_id: varchar
+        balance: decimal(38,8)
+        exchange_rt: decimal(38,8)
+        val_usd: decimal(38,8)
+        pct_val: decimal(38,12)
+    raw_ecb_fx_hist:
+      # Oracle external table: every currency column is text, with 'N/A' when not quoted
+      +column_types:
+        Date: date
+        USD: varchar
+        JPY: varchar
+        BGN: varchar
+        CYP: varchar
+        CZK: varchar
+        DKK: varchar
+        EEK: varchar
+        GBP: varchar
+        HUF: varchar
+        LTL: varchar
+        LVL: varchar
+        MTL: varchar
+        PLN: varchar
+        ROL: varchar
+        RON: varchar
+        SEK: varchar
+        SIT: varchar
+        SKK: varchar
+        CHF: varchar
+        ISK: varchar
+        NOK: varchar
+        HRK: varchar
+        RUB: varchar
+        TRL: varchar
+        TRY: varchar
+        AUD: varchar
+        BRL: varchar
+        CAD: varchar
+        CNY: varchar
+        HKD: varchar
+        IDR: varchar
+        ILS: varchar
+        INR: varchar
+        KRW: varchar
+        MXN: varchar
+        MYR: varchar
+        NZD: varchar
+        PHP: varchar
+        SGD: varchar
+        THB: varchar
+        ZAR: varchar
+    ref_risk_country_override:
+      +schema: reference
+    legacy_rpt_position_eur:
+      +schema: legacy
+      +column_types:
+        report_date: date
+        isin: varchar
+        val_local: decimal(38,2)
+        ecb_rate: decimal(38,8)
+        val_eur: decimal(38,2)
+    legacy_rpt_fund_eur:
+      +schema: legacy
+      +column_types:
+        report_date: date
+        net_assets_usd: decimal(38,2)
+        eurusd_rate: decimal(38,8)
+        net_assets_eur: decimal(38,2)
+        securities_eur: decimal(38,2)
+        cash_and_other_eur: decimal(38,2)
+        net_flows_eur: decimal(38,2)

@@ -1,0 +1,14 @@
+version: 2
+
+seeds:
+  - name: ref_risk_country_override
+    description: >
+      Business rule taken out of the legacy code (PKG_LOOKTHROUGH_EUR.risk_country, 2019).
+      Maps a country of incorporation to a country of risk. Applied by country, not by issuer:
+      to be validated with the Risk team (it sends Sapiens, an Israeli company, to HK,
+      and Birkenstock, a German company, to GB).
+    columns:
+      - name: inv_country
+        data_tests: [unique, not_null]
+      - name: risk_country
+        data_tests: [not_null]

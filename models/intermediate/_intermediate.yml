@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: int_fx_rates_at_report_date
+    description: >
+      For each quarter-end of the fund and each currency, the ECB rate to use:
+      the last rate published on or before the quarter-end. Replaces get_ecb_rate.
+      Includes EUR with a rate of 1.
+    data_tests:
+      - unique_combination:
+          arguments: {columns: [report_date, currency]}
+    columns:
+      - name: report_date
+        description: "Quarter-end date of the fund (from stg_nport__fund)."
+        data_tests: [not_null]
+      - name: currency
+        data_tests: [not_null]
+      - name: rate_date
+        description: "Date the ECB actually published the rate used (may be before report_date)."
+        data_tests: [not_null]
+      - name: units_per_eur
+        data_tests: [not_null, strictly_positive]

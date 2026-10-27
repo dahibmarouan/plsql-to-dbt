@@ -1,0 +1,91 @@
+version: 2
+
+# Specification of the staging models. Each model = one source table, cleaned:
+# clear names, right types, signs and flags. No business rule here.
+# The tests below are your checkpoints: `dbt build -s staging` must be green.
+
+models:
+  - name: stg_nport__holdings
+    description: "One row per holding and per quarter-end, as published by the fund in Form N-PORT."
+    data_tests:
+      - unique_combination:
+          arguments: {columns: [report_date, line_no]}
+    columns:
+      - name: report_date
+        data_tests: [not_null]
+      - name: line_no
+        data_tests: [not_null]
+      - name: security_id
+        description: "ISIN when there is one, otherwise the fund's internal identifier. Never empty."
+        data_tests: [not_null]
+      - name: isin
+        description: "Null when the line has no ISIN (never an empty string)."
+      - name: issuer_name
+      - name: asset_cat
+        description: "EC = equity, EP = preferred equity, RA = repurchase agreement (repo)."
+        data_tests:
+          - accepted_values:
+              arguments: {values: ["EC", "EP", "RA"]}
+      - name: is_cash_equivalent
+        description: "True for repurchase agreements: an overnight loan, counted as cash."
+        data_tests: [not_null]
+      - name: currency
+        description: "ISO code of the currency the security trades in."
+        data_tests: [not_null]
+      - name: fund_fx_per_usd
+        description: "Units of currency for 1 USD, as used by the fund. 1 for USD holdings."
+        data_tests: [not_null, strictly_positive]
+      - name: val_usd
+        data_tests: [not_null]
+      - name: balance
+      - name: units
+      - name: inv_country
+
+  - name: stg_nport__fund
+    description: "One row per quarter-end: totals of the fund in USD."
+    columns:
+      - name: report_date
+        data_tests: [unique, not_null]
+      - name: series_id
+      - name: series_name
+      - name: tot_assets_usd
+      - name: tot_liabs_usd
+      - name: net_assets_usd
+        data_tests: [not_null, strictly_positive]
+
+  - name: stg_nport__flows
+    description: "One row per month: subscriptions, reinvested dividends and redemptions, in USD."
+    data_tests:
+      - unique_combination:
+          arguments: {columns: [report_date, month_no]}
+    columns:
+      - name: report_date
+        data_tests:
+          - relationships:
+              arguments: {to: ref('stg_nport__fund'), field: report_date}
+      - name: month_no
+        data_tests:
+          - accepted_values:
+              arguments: {values: [1, 2, 3]}
+      - name: subscriptions_usd
+        data_tests: [not_null]
+      - name: reinvestments_usd
+        data_tests: [not_null]
+      - name: redemptions_usd
+        data_tests: [not_null]
+
+  - name: stg_ecb__fx_rates
+    description: >
+      ECB reference rates in long format: one row per date and quoted currency.
+      Days where a currency is not quoted ('N/A') are not kept.
+    data_tests:
+      - unique_combination:
+          arguments: {columns: [rate_date, currency]}
+    columns:
+      - name: rate_date
+        data_tests: [not_null]
+      - name: currency
+        data_tests: [not_null]
+      - name: units_per_eur
+        description: "Units of currency for 1 EUR, as a number (not text)."
+        data_tests: [not_null, strictly_positive]
