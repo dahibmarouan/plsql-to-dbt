@@ -75,7 +75,7 @@ def tests_summary(manifest: dict, run_results: dict) -> dict:
 
 def rows(con, sql: str) -> list[list]:
     out = []
-    for r in con.sql(sql).fetchall():
+    for r in con.execute(sql).fetchall():
         out.append([float(v) if hasattr(v, "as_tuple") else (v.isoformat() if hasattr(v, "isoformat") else v)
                     for v in r])
     return out
@@ -120,9 +120,9 @@ def warehouse(con) -> dict:
               on u.report_date = f.report_date and u.currency = 'USD'
             group by 1 order by 1"""),
         "counts": {
-            "holdings": con.sql("select count(*) from marts.fct_positions_eur").fetchone()[0],
-            "currencies": con.sql("select count(distinct currency) from marts.fct_positions_eur").fetchone()[0],
-            "ecb_days": con.sql("select count(*) from raw.raw_ecb_fx_hist").fetchone()[0],
+            "holdings": con.execute("select count(*) from marts.fct_positions_eur").fetchone()[0],
+            "currencies": con.execute("select count(distinct currency) from marts.fct_positions_eur").fetchone()[0],
+            "ecb_days": con.execute("select count(*) from raw.raw_ecb_fx_hist").fetchone()[0],
         },
     }
 
