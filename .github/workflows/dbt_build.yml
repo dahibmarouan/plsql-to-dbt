@@ -1,15 +1,24 @@
 name: dbt build
 
-# Rebuilds the whole project and runs every test on each push.
-# If a single test fails (for example an unexplained gap with the legacy output), the run turns red.
+# On each push: rebuild the project, run every test, rebuild the site from the results, publish it.
+# If a single test fails, the site is not updated.
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
-  dbt-build:
+  build:
     runs-on: ubuntu-latest
     env:
       DBT_PROFILES_DIR: .
@@ -26,3 +35,21 @@ jobs:
 
       - name: dbt build (seeds, models, tests, reconciliation)
         run: dbt build
+
+      - name: Build the site from the dbt results
+        run: python site/build_site.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

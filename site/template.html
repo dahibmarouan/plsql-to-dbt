@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PL/SQL → dbt : transparisation d'un fonds</title>
+<meta name="description" content="Un package PL/SQL de transparisation en euros, réécrit avec dbt sur les données réelles d'un fonds (SEC, BCE). 492 lignes identiques au centime, 16 écarts tous expliqués.">
+<meta property="og:title" content="Ce que cachait un vieux code PL/SQL, et comment dbt l'a rendu visible">
+<meta property="og:description" content="Migration PL/SQL vers dbt sur les vraies données d'un fonds : réconciliation au centime, 4 défauts mis au jour.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: light;
+  --bg:#F6F7F3; --surface:#FFFFFF; --ink:#15233A; --ink-2:#4A5869; --ink-3:#7A8592;
+  --rule:#DADFD6; --paper:#E5EEDF; --paper-ink:#2E4934; --paper-edge:#A3BC9F;
+  --modern:#1F5FBF; --modern-soft:#E4ECF9;
+  --fix:#9A5B0C; --fix-soft:#FBF0DC; --bad:#A8261D; --bad-soft:#FBE5E2; --good:#23704A; --good-soft:#E0F1E7;
+  --s1:#2a78d6; --s2:#eb6834;
+  --kw:#1F5FBF; --str:#8A4B08; --com:#6E7D70; --jj:#7A3FA0; --num:#23704A;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#10161F; --surface:#172131; --ink:#E7ECF2; --ink-2:#AAB5C3; --ink-3:#808C9A;
+    --rule:#2A3647; --paper:#17251B; --paper-ink:#B7D4B2; --paper-edge:#3E5C42;
+    --modern:#88AAEE; --modern-soft:#1D2B46;
+    --fix:#E3A757; --fix-soft:#33270F; --bad:#F08A80; --bad-soft:#3A1C1A; --good:#70CC99; --good-soft:#15301F;
+    --s1:#3987e5; --s2:#d95926;
+    --kw:#88AAEE; --str:#E3A757; --com:#80947F; --jj:#C99CE9; --num:#70CC99;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}*{transition:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 17px/1.6 "Schibsted Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--modern)}
+:focus-visible{outline:2px solid var(--modern);outline-offset:2px;border-radius:3px}
+code,pre,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.wrap{max-width:1160px;margin:0 auto;padding:0 24px}
+@media (max-width:640px){.wrap{padding:0 16px}body{font-size:16px}}
+button{font:inherit}
+
+/* top */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 0}
+.brand{font-weight:700;text-decoration:none;color:var(--ink)}
+.brand span{color:var(--ink-3);font-weight:500}
+@media (max-width:560px){.brand span{display:none}}
+.top-r{display:flex;gap:8px;align-items:center}
+.pill{display:inline-flex;border:1px solid var(--rule);border-radius:999px;padding:2px;background:var(--surface)}
+.pill button{border:0;background:none;color:var(--ink-2);font-weight:600;font-size:13px;padding:7px 11px;border-radius:999px;cursor:pointer}
+.pill button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.gh{font-size:14px;font-weight:600;text-decoration:none;color:var(--ink);border:1px solid var(--rule);padding:7px 12px;border-radius:999px;background:var(--surface)}
+
+/* hero */
+.hero{padding:40px 0 64px}
+.hero h1{font-size:clamp(32px,4.6vw,56px);line-height:1.05;letter-spacing:-.035em;font-weight:800;margin:0 0 20px;max-width:20ch}
+.lead{font-size:19px;color:var(--ink-2);max-width:62ch;margin:0 0 28px}
+.flip{display:grid;grid-template-columns:auto auto 1fr;gap:20px 28px;align-items:center;background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:26px 28px;margin:0 0 22px}
+@media (max-width:760px){.flip{grid-template-columns:1fr;gap:10px}}
+.flip .old{font:500 clamp(30px,4.4vw,52px)/1 "IBM Plex Mono",monospace;color:var(--paper-ink);background:var(--paper);border:1px solid var(--paper-edge);border-radius:6px;padding:10px 14px;text-decoration:line-through;text-decoration-thickness:3px;text-decoration-color:var(--bad)}
+.flip .new{font:800 clamp(38px,5.6vw,68px)/1 "Schibsted Grotesk",sans-serif;color:var(--modern);letter-spacing:-.03em}
+.flip .lbl{font-size:13px;color:var(--ink-3);margin-top:6px;font-weight:500}
+.flip p{margin:0;color:var(--ink-2);font-size:15.5px;max-width:46ch}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--rule)}
+@media (max-width:760px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.stats div{padding:16px 16px 4px 0}
+.stats b{display:block;font-size:30px;letter-spacing:-.02em;line-height:1.1}
+.stats span{font-size:14px;color:var(--ink-2)}
+.honest{margin:22px 0 0;font-size:14.5px;color:var(--ink-2);border-left:3px solid var(--paper-edge);padding:2px 0 2px 12px;max-width:80ch}
+.cta{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.btn{display:inline-block;font-weight:600;text-decoration:none;padding:11px 16px;border-radius:8px;border:1px solid var(--ink);color:var(--ink)}
+.btn.p{background:var(--ink);color:var(--bg)}
+
+section{padding:68px 0;border-top:1px solid var(--rule)}
+h2{font-size:clamp(26px,3.1vw,38px);line-height:1.12;letter-spacing:-.025em;margin:0 0 12px;max-width:26ch}
+.sub{color:var(--ink-2);max-width:64ch;margin:0 0 32px}
+h3{font-size:19px;margin:0 0 8px;letter-spacing:-.01em}
+
+.plain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:36px}
+@media (max-width:860px){.plain{grid-template-columns:minmax(0,1fr);gap:22px}}
+.plain p{margin:0;color:var(--ink-2)}
+
+/* defects */
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.tabs button{border:1px solid var(--rule);background:var(--surface);color:var(--ink);padding:10px 14px;border-radius:8px;cursor:pointer;font-weight:600;font-size:15px;text-align:left}
+.tabs button small{display:block;font-weight:500;color:var(--ink-3);font-size:12.5px}
+.tabs button[aria-selected="true"]{border-color:var(--ink);box-shadow:inset 0 -3px 0 var(--ink)}
+.defect{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:26px;align-items:start}
+@media (max-width:900px){.defect{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:12px;padding:20px}
+.panel h4{margin:0 0 8px;font-size:14px;color:var(--ink-3);font-weight:600}
+.code{margin:0;padding:12px 14px;border-radius:8px;overflow:auto;font-size:12.5px;line-height:1.6;white-space:pre}
+.code.legacy{background:var(--paper);border:1px solid var(--paper-edge);color:var(--paper-ink)}
+.code.modern{background:var(--modern-soft);border:1px solid transparent;color:var(--ink)}
+.kw{color:var(--kw);font-weight:500}.st{color:var(--str)}.cm{color:var(--com);font-style:italic}.jj{color:var(--jj)}.nu{color:var(--num)}
+.effect{font-size:15.5px;color:var(--ink-2);margin:0 0 14px}
+.effect b{color:var(--ink)}
+.mini-tbl{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.mini-tbl th,.mini-tbl td{padding:7px 6px;border-bottom:1px solid var(--rule);text-align:right}
+.mini-tbl th:first-child,.mini-tbl td:first-child{text-align:left}
+.mini-tbl th{color:var(--ink-3);font-weight:600;font-size:12.5px}
+.tag{display:inline-block;font-size:12px;font-weight:600;padding:3px 7px;border-radius:5px}
+.tag.ok{background:var(--good-soft);color:var(--good)}.tag.ko{background:var(--bad-soft);color:var(--bad)}.tag.fx{background:var(--fix-soft);color:var(--fix)}
+.why{margin-top:14px;font-size:14.5px;color:var(--ink-2)}
+
+/* charts */
+.chart-box{position:relative}
+svg.chart{display:block;width:100%;height:auto}
+.chart .grid line{stroke:var(--rule)}
+.chart .axis text{font:12px "Schibsted Grotesk",sans-serif;fill:var(--ink-3)}
+.chart .zero{stroke:var(--ink-3)}
+.chart .lab{font:600 11.5px "Schibsted Grotesk",sans-serif;fill:var(--ink-2)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13.5px;color:var(--ink-2);margin:4px 0 6px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:9px 11px;font-size:13px;line-height:1.45;box-shadow:0 10px 28px -14px rgba(0,0,0,.4);opacity:0;transition:opacity .12s;min-width:180px;z-index:3}
+.tip b{display:block;margin-bottom:3px}
+.tip td{padding:1px 8px 1px 0;font-variant-numeric:tabular-nums}
+
+/* map */
+.dag-scroll{overflow-x:auto;border:1px solid var(--rule);border-radius:12px;background:var(--surface)}
+svg.dag{display:block;min-width:860px;width:100%;height:auto}
+.dag .edge{fill:none;stroke:var(--rule);stroke-width:1.5}
+.dag .edge.on{stroke:var(--modern);stroke-width:2}
+.dag .node rect{fill:var(--surface);stroke:var(--ink-3)}
+.dag .node text{font:12.5px "IBM Plex Mono",monospace;fill:var(--ink)}
+.dag .node{cursor:pointer}
+.dag .node.marts rect{stroke:var(--ink);stroke-width:1.5}
+.dag .node.on rect{fill:var(--modern-soft);stroke:var(--modern);stroke-width:2}
+.dag .node.on text{fill:var(--modern)}
+.dag.dim .node:not(.on){opacity:.35}.dag.dim .edge:not(.on){opacity:.35}
+.dag .col{font:600 12px "Schibsted Grotesk",sans-serif;fill:var(--ink-3)}
+.map{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;margin-top:22px;align-items:start}
+@media (max-width:900px){.map{grid-template-columns:minmax(0,1fr)}}
+.blocks{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.blocks button{border:1px solid var(--paper-edge);background:var(--paper);color:var(--paper-ink);padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13.5px;font-weight:500}
+.blocks button[aria-pressed="true"]{background:var(--paper-ink);color:var(--bg)}
+.listing{max-height:600px;overflow:auto;border:1px solid var(--paper-edge);border-radius:6px;background:var(--surface);font:12.5px/1.65 "IBM Plex Mono",monospace;padding:6px 0}
+.listing .l{display:grid;grid-template-columns:42px 1fr;white-space:pre;padding-right:14px;border-left:4px solid transparent}
+.listing .l:nth-child(6n+1),.listing .l:nth-child(6n+2),.listing .l:nth-child(6n+3){background:var(--paper)}
+.listing .n{color:var(--ink-3);text-align:right;padding-right:12px;user-select:none}
+.listing .l.inb{cursor:pointer}
+.listing .l.sel{border-left-color:var(--modern);background:var(--modern-soft)!important}
+.detail{position:sticky;top:14px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 14px}
+.chip{font:500 12.5px "IBM Plex Mono",monospace;border:1px solid var(--modern);color:var(--modern);background:var(--modern-soft);border-radius:6px;padding:5px 8px;cursor:pointer}
+.chip.pl{border-color:var(--paper-edge);color:var(--paper-ink);background:var(--paper);font-family:"Schibsted Grotesk",sans-serif}
+.detail pre.code{max-height:420px}
+.muted{color:var(--ink-3);font-size:14px}
+
+/* proof */
+.proof-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:26px;align-items:start}
+@media (max-width:960px){.proof-grid{grid-template-columns:minmax(0,1fr)}}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;color:var(--ink-2);padding:8px 11px;font-size:13.5px;cursor:pointer;font-weight:500}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+select{font:inherit;font-size:14px;padding:7px 10px;border-radius:8px;border:1px solid var(--rule);background:var(--surface);color:var(--ink)}
+.tbl-scroll{max-height:470px;overflow:auto;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.tbl th{position:sticky;top:0;background:var(--surface);z-index:1;font-size:12.5px;color:var(--ink-3);font-weight:600}
+.tbl th,.tbl td{padding:8px 10px;border-bottom:1px solid var(--rule);text-align:right;white-space:nowrap}
+.tbl th:first-child,.tbl td:first-child{text-align:left;white-space:normal;min-width:150px}
+.tbl td:last-child{white-space:normal;min-width:120px}
+.tbl small{font-size:12px}
+.tbl td.dash{color:var(--ink-3)}
+.big{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:18px}
+.big div{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:14px}
+.big b{display:block;font-size:28px;line-height:1.1}
+.big span{font-size:13.5px;color:var(--ink-2)}
+.big .g b{color:var(--good)}.big .f b{color:var(--fix)}
+.tests{margin-top:20px}
+.tests .row{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--rule);padding:8px 0;font-size:15px}
+.tests .row span:last-child{font-weight:600;font-variant-numeric:tabular-nums}
+
+/* fund */
+.bars{display:flex;flex-direction:column;gap:6px}
+.bar{display:grid;grid-template-columns:52px minmax(0,1fr) 92px;gap:10px;align-items:center;font-size:14px;font-variant-numeric:tabular-nums}
+.bar .t{height:16px;background:var(--rule);border-radius:4px;overflow:hidden}
+.bar .t i{display:block;height:100%;background:var(--s1);border-radius:4px 4px 4px 4px}
+.bar span:last-child{text-align:right;color:var(--ink-2)}
+.fund-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:26px}
+@media (max-width:860px){.fund-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* how */
+.steps{list-style:none;counter-reset:s;padding:0;margin:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:26px}
+@media (max-width:860px){.steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.steps{grid-template-columns:minmax(0,1fr)}}
+.steps li{counter-increment:s;border-top:2px solid var(--ink);padding-top:12px}
+.steps li::before{content:counter(s);display:block;font-weight:800;font-size:26px;line-height:1;margin-bottom:8px}
+.steps b{display:block;margin-bottom:4px}
+.steps span{color:var(--ink-2);font-size:15px}
+.badge{margin-top:24px}
+
+/* about */
+.about{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:44px;align-items:end}
+@media (max-width:860px){.about{grid-template-columns:minmax(0,1fr);gap:22px}}
+.about p{color:var(--ink-2);max-width:60ch}
+.links{display:flex;flex-direction:column}
+.links a,.links button{display:flex;justify-content:space-between;gap:12px;text-decoration:none;color:var(--ink);font-weight:600;border:0;border-bottom:1px solid var(--rule);padding:12px 0;background:none;cursor:pointer;text-align:left}
+.links span{color:var(--ink-3);font-weight:400}
+footer{padding:26px 0 46px;color:var(--ink-3);font-size:13.5px;border-top:1px solid var(--rule)}
+footer p{margin:0 0 6px;max-width:90ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <a class="brand" href="#">PL/SQL → dbt <span data-t="brandSub"></span></a>
+  <div class="top-r">
+    <div class="pill" role="group" aria-label="Langue / Language">
+      <button type="button" data-lang="fr" aria-pressed="true">FR</button>
+      <button type="button" data-lang="en" aria-pressed="false">EN</button>
+    </div>
+    <a class="gh" id="ghTop" href="#">GitHub</a>
+  </div>
+</header>
+
+<main>
+<div class="hero">
+  <h1 data-t="h1"></h1>
+  <p class="lead" data-t="lead"></p>
+  <div class="flip" id="flip"></div>
+  <div class="stats" id="stats"></div>
+  <p class="honest" data-t="honest"></p>
+  <div class="cta">
+    <a class="btn p" href="#defects" data-t="ctaDefects"></a>
+    <a class="btn" id="ghHero" href="#" data-t="ctaCode"></a>
+  </div>
+</div>
+
+<section id="plain">
+  <h2 data-t="plainT"></h2>
+  <p class="sub" data-t="plainS"></p>
+  <div class="plain">
+    <div><h3 data-t="p1t"></h3><p data-t="p1"></p></div>
+    <div><h3 data-t="p2t"></h3><p data-t="p2"></p></div>
+    <div><h3 data-t="p3t"></h3><p data-t="p3"></p></div>
+  </div>
+</section>
+
+<section id="defects">
+  <h2 data-t="defT"></h2>
+  <p class="sub" data-t="defS"></p>
+  <div class="tabs" role="tablist" id="defTabs"></div>
+  <div id="defBody"></div>
+</section>
+
+<section id="map">
+  <h2 data-t="mapT"></h2>
+  <p class="sub" data-t="mapS"></p>
+  <div class="dag-scroll"><svg class="dag" id="dag" role="group" aria-label="dbt lineage"></svg></div>
+  <div class="map">
+    <div>
+      <div class="blocks" id="blockBtns" role="group"></div>
+      <div class="listing" id="listing" aria-label="pkg_lookthrough_eur.sql"></div>
+    </div>
+    <div class="panel detail" id="detail" aria-live="polite"></div>
+  </div>
+</section>
+
+<section id="proof">
+  <h2 id="proofT"></h2>
+  <p class="sub" data-t="proofS"></p>
+  <div class="proof-grid">
+    <div>
+      <div class="big" id="big"></div>
+      <div class="toolbar">
+        <div class="seg" id="statusSeg" role="group"></div>
+        <select id="qSel" aria-label="Trimestre"></select>
+      </div>
+      <div class="tbl-scroll"><table class="tbl" id="reconTbl"></table></div>
+    </div>
+    <div>
+      <h3 data-t="fundReconT"></h3>
+      <p class="muted" data-t="fundReconS"></p>
+      <div style="overflow-x:auto"><table class="mini-tbl" id="fundTbl"></table></div>
+      <div class="tests" id="tests"></div>
+    </div>
+  </div>
+</section>
+
+<section id="fund">
+  <h2 data-t="fundT"></h2>
+  <p class="sub" data-t="fundS"></p>
+  <div class="toolbar"><select id="qSel2" aria-label="Trimestre"></select></div>
+  <div class="fund-grid">
+    <div><h3 data-t="byCcy"></h3><div class="bars" id="ccyBars"></div></div>
+    <div><h3 data-t="byCountry"></h3><div class="bars" id="ctyBars"></div></div>
+  </div>
+</section>
+
+<section id="how">
+  <h2 data-t="howT"></h2>
+  <p class="sub" data-t="howS"></p>
+  <ol class="steps">
+    <li><b data-t="s1t"></b><span data-t="s1"></span></li>
+    <li><b data-t="s2t"></b><span data-t="s2"></span></li>
+    <li><b data-t="s3t"></b><span data-t="s3"></span></li>
+    <li><b data-t="s4t"></b><span data-t="s4"></span></li>
+  </ol>
+  <div class="badge"><a id="badgeLink" href="#"><img id="badgeImg" alt="dbt build status"></a></div>
+</section>
+
+<section id="about">
+  <div class="about">
+    <div>
+      <h2 data-t="aboutT"></h2>
+      <p data-t="about1"></p>
+      <p data-t="about2"></p>
+    </div>
+    <div class="links" id="links"></div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <p data-t="foot1"></p>
+  <p data-t="foot2"></p>
+  <p><span data-t="foot3"></span> <span id="builtAt"></span></p>
+</footer>
+</div>
+
+<script>
+const D=/*__DATA__*/null;
+
+/* ------- personal details ------- */
+const ME = {
+  name: "Marouan Dahib",
+  linkedin: "https://www.linkedin.com/in/marouan-dahib-3546491b0/",
+  mail: ["marouan.dhb", "gmail.com"],      // assembled on click only
+  github: "https://github.com/" + D.repo
+};
+
+/* ------- helpers ------- */
+let lang = "fr";
+try { const s = localStorage.getItem("lang"); if (s) lang = s; else if (!(navigator.language || "").startsWith("fr")) lang = "en"; } catch (e) {}
+const loc = () => lang === "fr" ? "fr-FR" : "en-GB";
+const nf = (v, d = 0) => v == null ? "–" : Number(v).toLocaleString(loc(), { minimumFractionDigits: d, maximumFractionDigits: d });
+const meur = (v, d = 1, sign = false) => v == null ? "–" : (sign && v > 0 ? "+" : "") + (v / 1e6).toLocaleString(loc(), { minimumFractionDigits: d, maximumFractionDigits: d }) + (lang === "fr" ? " M€" : "m €");
+const qlabel = d => { const dt = new Date(d + "T12:00:00"); return dt.toLocaleDateString(loc(), { day: "2-digit", month: "short", year: "numeric" }); };
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const $ = id => document.getElementById(id);
+
+const KW = new Set(("select from where and or not as on join left inner full outer cross group by order having union all case when then else end with over partition rows between unbounded preceding current row coalesce cast sum max min count round abs is null in distinct unpivot into name value columns exclude " +
+  "create replace package body procedure function return begin loop for if elsif exception others values insert delete commit rollback cursor number varchar2 date nvl to_number execute immediate using true false row_number desc decimal").split(" "));
+function hl(code) {
+  const re = /(\/\*[\s\S]*?\*\/|--[^\n]*|\{#[\s\S]*?#\}|\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}|'(?:[^']|'')*'|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(code))) {
+    out += esc(code.slice(last, m.index)); const t = m[0];
+    if (t.startsWith("--") || t.startsWith("/*") || t.startsWith("{#")) out += `<span class="cm">${esc(t)}</span>`;
+    else if (t.startsWith("{{") || t.startsWith("{%")) out += `<span class="jj">${esc(t)}</span>`;
+    else if (t.startsWith("'")) out += `<span class="st">${esc(t)}</span>`;
+    else if (/^\d/.test(t)) out += `<span class="nu">${t}</span>`;
+    else if (KW.has(t.toLowerCase())) out += `<span class="kw">${t}</span>`;
+    else out += esc(t);
+    last = re.lastIndex;
+  }
+  return out + esc(code.slice(last));
+}
+
+/* ------- derived numbers ------- */
+const Q = D.fund.map(r => r[0]);
+const F = Object.fromEntries(D.fund.map(r => [r[0], { na: r[1], sec: r[2], cash: r[3], flows: r[4], lsec: r[5], lcash: r[6], lflows: r[7], n: r[8], ln: r[9], status: r[10] }]));
+const flipQ = Q.find(q => Math.sign(F[q].flows) !== Math.sign(F[q].lflows)) || Q[Q.length - 1];
+const st = Counter => Counter;
+const sc = {}; D.recon.forEach(r => sc[r[6]] = (sc[r[6]] || 0) + 1);
+const nIdent = sc["identical"] || 0, nTotal = D.recon.length, nUnexp = sc["UNEXPLAINED"] || 0, nFixed = nTotal - nIdent - nUnexp;
+const nModels = D.graph.length;
+const plLines = D.plsql.split("\n");
+
+/* ------- texts ------- */
+const T = {
+fr: {
+  brandSub: "un cas de migration", ctaDefects: "Voir les 4 défauts", ctaCode: "Lire le code sur GitHub",
+  h1: "Ce que cachait un vieux code PL/SQL, et comment dbt l'a rendu visible",
+  lead: `Un traitement bancaire typique : la transparisation en euros d'un fonds d'investissement, chaque trimestre. Je l'ai réécrit avec dbt et vérifié ligne à ligne contre l'ancien code, sur les données réelles d'un fonds américain (${D.counts.holdings} positions, ${D.counts.currencies} devises, ${Q.length} trimestres).`,
+  flipOld: "flux nets annoncés par le vieux code", flipNew: "flux nets réels",
+  flipTxt: q => `Au ${qlabel(q)}, le vieux code annonçait que les investisseurs avaient retiré de l'argent. Il oubliait les dividendes réinvestis : en réalité, le fonds en a reçu.`,
+  stIdent: `positions identiques au centime sur ${nTotal}`, stFixed: "écarts, tous expliqués", stUnexp: "écart inexpliqué", stTests: "tests à chaque modification",
+  honest: "Transparence : le package PL/SQL a été écrit pour l'exercice, dans le style des traitements legacy bancaires et avec leurs défauts typiques. Les données sont réelles et publiques (SEC, BCE) : les montants affichés sont l'effet qu'auraient ces défauts sur le vrai fonds.",
+  plainT: "En clair, de quoi parle-t-on ?", plainS: "Pas besoin d'être développeur pour suivre.",
+  p1t: "La transparisation d'un fonds", p1: "Une banque vend à ses clients européens un fonds américain. Chaque trimestre, elle doit leur dire ce qu'il contient vraiment : chaque action détenue, sa valeur en euros, son pays. Les assureurs en ont besoin pour leurs calculs réglementaires.",
+  p2t: "Le vieux code", p2: "Ce calcul tourne dans un package PL/SQL Oracle : 172 lignes où tout est mélangé, règles métier, cas particuliers et gestion d'erreurs. Il fonctionne depuis des années, et plus personne n'ose y toucher.",
+  p3t: "La version dbt", p3: `Le même calcul en ${nModels} requêtes SQL nommées, documentées et testées, qui s'enchaînent. Chaque exécution compare le résultat à l'ancien code et refuse de passer au moindre écart inexpliqué.`,
+  defT: "Quatre défauts typiques, et leur prix sur les vraies données", defS: "Chacun est un réflexe courant du code legacy. Cliquez pour voir le code d'origine, son effet sur le fonds et la correction en dbt.",
+  legacyCode: "Dans le PL/SQL", effectT: "L'effet sur le fonds", fixT: "La correction en dbt",
+  d1t: "Une devise perdue en silence", d1s: "WHEN OTHERS THEN RETURN NULL",
+  d1e: v => `La BCE ne publie pas le peso chilien. La requête plante, l'erreur est avalée, et la position Embotelladora Andina disparaît du total des titres pour se retrouver comptée en liquidités : <b>${v}</b> selon le trimestre.`,
+  d1w: "Un test not_null sur la valeur en euros fait échouer le build au lieu de laisser passer. La valeur est ensuite calculée via le dollar, et la colonne fx_method indique la méthode utilisée.",
+  d2t: "Des lignes écartées", d2s: "AND isin IS NOT NULL",
+  d2e: v => `Les pensions livrées (prêts au jour le jour, équivalents de liquidités) n'ont pas d'ISIN. Une condition ajoutée en 2017 les retire de la liste des positions : <b>${v}</b> selon le trimestre.`,
+  d2w: "Toutes les lignes sont gardées, avec un identifiant de secours, et marquées comme équivalents de liquidités au lieu d'être effacées.",
+  d3t: "Une règle cachée dans le code", d3s: "IF p_country = 'KY' THEN 'HK'",
+  d3e: () => "Le pays de risque est corrigé par pays d'immatriculation, pas par entreprise. Résultat : la règle est juste pour deux des quatre sociétés concernées.",
+  d3w: "Le résultat est conservé à l'identique, mais la règle est sortie du code vers une table de référence documentée, que le métier peut lire et valider.",
+  d4t: "Un flux oublié", d4s: "SUM(sales) - SUM(redemption)",
+  d4e: (a, b) => `Les dividendes réinvestis par les investisseurs sont de l'argent qui entre. Le vieux code les ignore : en décembre, les sorties nettes sont gonflées de <b>${a}</b> et <b>${b}</b>.`,
+  d4w: "Les flux nets incluent les trois composantes : souscriptions, dividendes réinvestis, rachats.",
+  thQ: "Trimestre", thLost: "Valeur perdue", thIssuer: "Société", thInc: "Immatriculée", thRisk: "Pays retenu", thOk: "Juste ?",
+  yes: "oui", no: "non", legLegacy: "Vieux code", legDbt: "dbt",
+  mapT: "Chaque bloc du vieux code a trouvé sa place", mapS: "En haut, le graphe dbt : chaque boîte est une requête SQL, les flèches montrent qui alimente quoi. En bas, le package d'origine. Cliquez un bloc ou une boîte pour voir la correspondance et le SQL.",
+  plBlocks: { fx: "Le taux BCE", country: "Le pays de risque", positions: "Les positions", summary: "La synthèse", run: "L'enchaînement" },
+  plBlockTxt: {
+    fx: "SQL dynamique (EXECUTE IMMEDIATE) pour lire une colonne par devise, repli sur le dernier taux connu, erreur avalée si la devise n'existe pas. Devient un UNPIVOT, puis une jointure sur une période avec ROW_NUMBER.",
+    country: "Une règle métier écrite en dur avec IF / ELSIF. Devient une table de référence jointe avec LEFT JOIN et COALESCE.",
+    positions: "Un curseur qui parcourt les positions une à une, convertit et insère. Devient une seule requête ensembliste.",
+    summary: "Des SELECT INTO qui additionnent les positions et les flux. Devient un modèle d'agrégation avec GROUP BY.",
+    run: "La boucle sur les trimestres, les COMMIT et une erreur avalée. Remplacés par le graphe dbt et par deux réconciliations testées avec le vieux code."
+  },
+  layer: { staging: "Staging : nettoie une source", intermediate: "Intermédiaire : une règle métier", marts: "Mart : résultat publié" },
+  replaces: "Remplace :", readsSeeds: "Lit :", showSql: "Le SQL du modèle", lines: "lignes", pickOne: "Sélectionnez un bloc ou une boîte.",
+  proofT: `${nIdent} positions sur ${nTotal} identiques au centime`, proofS: "Chaque exécution compare le résultat dbt à celui du vieux code, ligne par ligne et trimestre par trimestre. Une seule différence non expliquée, et le build échoue.",
+  bIdent: "identiques", bFixed: "corrigées (défauts 1 et 2)", bUnexp: "inexpliquée",
+  fAll: "Toutes", fIdent: "Identiques", fFixed: "Corrigées", allQ: "Tous les trimestres",
+  thCcy: "Devise", thLeg: "Vieux code (€)", thDbt: "dbt (€)", thSt: "Statut",
+  stIdentical: "identique", stFixedIsin: "corrigée : ligne sans ISIN", stFixedFx: "corrigée : devise non cotée", stUnexplained: "INEXPLIQUÉE",
+  fundReconT: "La synthèse du fonds, trimestre par trimestre", fundReconS: "Chaque écart est rapproché de sa cause, à un centime près.",
+  thSec: "Titres : écart", thFlows: "Flux nets", thStatus: "Statut", explained: "expliqué",
+  testsT: "Tests à chaque exécution", tPass: "réussis", tWarn: "avertissements", tFail: "en échec",
+  fundT: "Le fonds réel derrière les chiffres", fundS: "Oakmark International Small Cap Fund : un fonds américain d'actions de petites entreprises hors des États-Unis. Composition en euros, d'après ses déclarations à la SEC.",
+  byCcy: "Par devise (M€)", byCountry: "Par pays de risque (M€, hors liquidités)",
+  howT: "Comment le projet tourne", howS: "Tout est automatique et reproductible : ce site est reconstruit à partir des vrais résultats à chaque modification du code.",
+  s1t: "Les données", s1: `8 déclarations N-PORT de la SEC et ${nf(D.counts.ecb_days)} jours de taux BCE, convertis en tables sources.`,
+  s2t: "dbt build", s2: `${nModels} modèles et ${D.tests.total} tests s'exécutent sur DuckDB à chaque modification, via GitHub Actions.`,
+  s3t: "La réconciliation", s3: "Le résultat est comparé à la sortie du vieux code. Un écart inexpliqué arrête tout.",
+  s4t: "La publication", s4: "Ce site est régénéré depuis les résultats de dbt, puis publié sur GitHub Pages.",
+  aboutT: "Qui a construit ça",
+  about1: "Je suis Marouan Dahib, data analyst depuis deux ans dans l'industrie aéronautique, certifié dbt et Snowflake. Ce projet montre ma façon de travailler : comprendre un existant, le rendre lisible, et prouver que rien n'a été perdu en route.",
+  about2: "Je cherche un poste d'Analytics Engineer au Luxembourg. Si votre équipe a du PL/SQL à moderniser, parlons-en.",
+  lnk: "LinkedIn", lnkS: "Me contacter", mail: "E-mail", mailS: "Afficher l'adresse", gh: "Code source", ghS: "Le dépôt complet",
+  foot1: "Données : SEC, déclarations N-PORT d'Oakmark International Small Cap Fund (série S000002763) ; BCE, taux de change de référence de l'euro. Projet personnel, sans lien avec le fonds, sa société de gestion ou une banque.",
+  foot2: "Le package PL/SQL est simulé. Préparation des données et du site réalisée avec l'aide d'une IA ; modèles dbt écrits et vérifiés par l'auteur.",
+  foot3: "Dernière exécution des tests :"
+},
+en: {
+  brandSub: "a migration case study", ctaDefects: "See the 4 defects", ctaCode: "Read the code on GitHub",
+  h1: "What an old PL/SQL package was hiding, and how dbt made it visible",
+  lead: `A typical banking job: the quarterly euro look-through of an investment fund. I rebuilt it with dbt and checked it line by line against the old code, on a real US fund's data (${D.counts.holdings} holdings, ${D.counts.currencies} currencies, ${Q.length} quarters).`,
+  flipOld: "net flows reported by the old code", flipNew: "actual net flows",
+  flipTxt: q => `On ${qlabel(q)}, the old code reported that investors had taken money out. It ignored reinvested dividends: in reality, money came in.`,
+  stIdent: `holdings identical to the cent, out of ${nTotal}`, stFixed: "differences, all explained", stUnexp: "unexplained difference", stTests: "tests on every change",
+  honest: "Transparency: the PL/SQL package was written for this exercise, in the style of legacy banking code and with its typical defects. The data is real and public (SEC, ECB): the amounts shown are what those defects would do to the real fund.",
+  plainT: "In plain words, what is this about?", plainS: "No need to be a developer to follow.",
+  p1t: "A fund look-through", p1: "A bank sells a US fund to its European clients. Every quarter it must tell them what the fund really holds: each share, its value in euros, its country. Insurers need it for their regulatory reporting.",
+  p2t: "The old code", p2: "This runs in a 172-line Oracle PL/SQL package where everything is mixed: business rules, special cases, error handling. It has worked for years and nobody dares to touch it.",
+  p3t: "The dbt version", p3: `The same calculation as ${nModels} named, documented, tested SQL queries feeding each other. Every run compares the result with the old code and fails on any unexplained difference.`,
+  defT: "Four typical defects, and what they cost on real data", defS: "Each one is a common legacy habit. Click to see the original code, its effect on the fund, and the dbt fix.",
+  legacyCode: "In the PL/SQL", effectT: "Effect on the fund", fixT: "The dbt fix",
+  d1t: "A currency silently lost", d1s: "WHEN OTHERS THEN RETURN NULL",
+  d1e: v => `The ECB does not publish the Chilean peso. The query fails, the error is swallowed, and the Embotelladora Andina holding drops out of the securities total and ends up counted as cash: <b>${v}</b> depending on the quarter.`,
+  d1w: "A not_null test on the euro value fails the build instead of letting it through. The value is then computed via the dollar, and the fx_method column records the method used.",
+  d2t: "Lines filtered out", d2s: "AND isin IS NOT NULL",
+  d2e: v => `Repurchase agreements (overnight loans, cash equivalents) have no ISIN. A condition added in 2017 removes them from the holdings list: <b>${v}</b> depending on the quarter.`,
+  d2w: "Every line is kept, with a fallback identifier, and flagged as a cash equivalent instead of being dropped.",
+  d3t: "A rule hidden in code", d3s: "IF p_country = 'KY' THEN 'HK'",
+  d3e: () => "Country of risk is overridden by country of incorporation, not by company. As a result the rule is right for only two of the four companies concerned.",
+  d3w: "The output is kept identical, but the rule moves out of the code into a documented reference table that the business can read and approve.",
+  d4t: "A forgotten flow", d4s: "SUM(sales) - SUM(redemption)",
+  d4e: (a, b) => `Dividends reinvested by investors are money coming in. The old code ignores them: in December, net outflows are overstated by <b>${a}</b> and <b>${b}</b>.`,
+  d4w: "Net flows now include all three parts: subscriptions, reinvested dividends, redemptions.",
+  thQ: "Quarter", thLost: "Value lost", thIssuer: "Company", thInc: "Incorporated", thRisk: "Country used", thOk: "Right?",
+  yes: "yes", no: "no", legLegacy: "Old code", legDbt: "dbt",
+  mapT: "Every block of the old code found a new home", mapS: "At the top, the dbt graph: each box is a SQL query, arrows show what feeds what. Below, the original package. Click a block or a box to see how they match, and the SQL.",
+  plBlocks: { fx: "ECB rate", country: "Country of risk", positions: "Holdings", summary: "Summary", run: "Orchestration" },
+  plBlockTxt: {
+    fx: "Dynamic SQL (EXECUTE IMMEDIATE) to read one column per currency, fallback to the last known rate, error swallowed when the currency does not exist. Becomes an UNPIVOT, then a date-range join with ROW_NUMBER.",
+    country: "A business rule hard-coded with IF / ELSIF. Becomes a reference table joined with LEFT JOIN and COALESCE.",
+    positions: "A cursor looping over holdings one by one, converting and inserting. Becomes a single set-based query.",
+    summary: "SELECT INTO statements adding up holdings and flows. Becomes an aggregation model with GROUP BY.",
+    run: "The loop over quarters, COMMITs and a swallowed error. Replaced by the dbt graph and two tested reconciliations with the old code."
+  },
+  layer: { staging: "Staging: cleans one source", intermediate: "Intermediate: one business rule", marts: "Mart: published result" },
+  replaces: "Replaces:", readsSeeds: "Reads:", showSql: "Model SQL", lines: "lines", pickOne: "Select a block or a box.",
+  proofT: `${nIdent} of ${nTotal} holdings identical to the cent`, proofS: "Every run compares the dbt result with the old code, line by line and quarter by quarter. One unexplained difference and the build fails.",
+  bIdent: "identical", bFixed: "corrected (defects 1 and 2)", bUnexp: "unexplained",
+  fAll: "All", fIdent: "Identical", fFixed: "Corrected", allQ: "All quarters",
+  thCcy: "Currency", thLeg: "Old code (€)", thDbt: "dbt (€)", thSt: "Status",
+  stIdentical: "identical", stFixedIsin: "corrected: no ISIN", stFixedFx: "corrected: currency not quoted", stUnexplained: "UNEXPLAINED",
+  fundReconT: "The fund summary, quarter by quarter", fundReconS: "Each gap is matched to its cause, within one cent.",
+  thSec: "Securities: gap", thFlows: "Net flows", thStatus: "Status", explained: "explained",
+  testsT: "Tests on every run", tPass: "passed", tWarn: "warnings", tFail: "failed",
+  fundT: "The real fund behind the numbers", fundS: "Oakmark International Small Cap Fund: a US fund investing in small companies outside the United States. Breakdown in euros, from its SEC filings.",
+  byCcy: "By currency (€m)", byCountry: "By country of risk (€m, excluding cash)",
+  howT: "How the project runs", howS: "Everything is automated and reproducible: this site is rebuilt from the real results on every code change.",
+  s1t: "Data", s1: `8 SEC N-PORT filings and ${nf(D.counts.ecb_days)} days of ECB rates, turned into source tables.`,
+  s2t: "dbt build", s2: `${nModels} models and ${D.tests.total} tests run on DuckDB on every change, through GitHub Actions.`,
+  s3t: "Reconciliation", s3: "The result is compared with the old code's output. One unexplained gap stops everything.",
+  s4t: "Publishing", s4: "This site is regenerated from dbt's results, then published on GitHub Pages.",
+  aboutT: "Who built this",
+  about1: "I'm Marouan Dahib, a data analyst for two years in the aerospace industry, certified in dbt and Snowflake. This project shows how I work: understand an existing system, make it readable, and prove nothing was lost on the way.",
+  about2: "I'm looking for an Analytics Engineer role in Luxembourg. If your team has PL/SQL to modernise, let's talk.",
+  lnk: "LinkedIn", lnkS: "Get in touch", mail: "Email", mailS: "Show address", gh: "Source code", ghS: "The full repository",
+  foot1: "Data: SEC, N-PORT filings of Oakmark International Small Cap Fund (series S000002763); ECB euro foreign exchange reference rates. Personal project, not affiliated with the fund, its manager or any bank.",
+  foot2: "The PL/SQL package is simulated. Data preparation and this site were built with the help of an AI; the dbt models were written and checked by the author.",
+  foot3: "Last test run:"
+}};
+const t = k => T[lang][k];
+
+/* ------- hero ------- */
+function renderHero() {
+  const f = F[flipQ];
+  $("flip").innerHTML = `
+    <div><div class="old">${meur(f.lflows, 1, true)}</div><div class="lbl">${t("flipOld")}</div></div>
+    <div><div class="new">${meur(f.flows, 1, true)}</div><div class="lbl">${t("flipNew")}</div></div>
+    <p>${t("flipTxt")(flipQ)}</p>`;
+  const tf = D.tests.status;
+  $("stats").innerHTML = [[nIdent, t("stIdent")], [nFixed, t("stFixed")], [nUnexp, t("stUnexp")], [D.tests.total, t("stTests")]]
+    .map(([v, l]) => `<div><b>${nf(v)}</b><span>${l}</span></div>`).join("");
+}
+
+/* ------- defects ------- */
+const SNIP = {
+  1: { pl: [52, 59], dbt: `COALESCE(\n    ROUND(ROUND(h.val_usd * h.fund_fx_per_usd, 2) / fx.units_per_eur, 2),\n    ROUND(h.val_usd / usd.units_per_eur, 2)   -- via le dollar\n) AS val_eur,\nCASE WHEN fx.units_per_eur IS NULL THEN 'USD_CROSS'\n     ELSE 'ECB' END AS fx_method` },
+  2: { pl: [80, 85], dbt: `COALESCE(isin, other_id) AS security_id,\nasset_cat = 'RA'         AS is_cash_equivalent` },
+  3: { pl: [65, 73], dbt: `LEFT JOIN {{ ref('ref_risk_country_override') }} AS o\n    ON o.inv_country = h.inv_country\n...\nCOALESCE(o.risk_country, h.inv_country) AS risk_country` },
+  4: { pl: [135, 139], dbt: `SUM(subscriptions_usd)\n  + SUM(reinvestments_usd)\n  - SUM(redemptions_usd) AS net_flows_usd` }
+};
+let curDef = 1;
+function plSnippet(a, b) {
+  // trim to the lines that matter, located by content so it survives small edits
+  return plLines.slice(a - 1, b).join("\n");
+}
+function findLines(needle, before = 0, after = 0) {
+  const i = plLines.findIndex(l => l.includes(needle));
+  return i < 0 ? [1, 1] : [i + 1 - before, i + 1 + after];
+}
+function renderDefTabs() {
+  $("defTabs").innerHTML = [1, 2, 3, 4].map(i => `<button type="button" role="tab" aria-selected="${i === curDef}" data-d="${i}">${i}. ${t("d" + i + "t")}<small class="mono">${esc(t("d" + i + "s"))}</small></button>`).join("");
+  $("defTabs").querySelectorAll("button").forEach(b => b.onclick = () => { curDef = +b.dataset.d; renderDefTabs(); renderDef(); });
+}
+function rangeTxt(vals) {
+  const a = Math.min(...vals), b = Math.max(...vals);
+  return lang === "fr" ? `de ${meur(a)} à ${meur(b)}` : `${meur(a)} to ${meur(b)}`;
+}
+function renderDef() {
+  const i = curDef;
+  const span = (from, to) => { const a = plLines.findIndex(l => l.includes(from)); const b = plLines.findIndex((l, k) => k >= a && l.includes(to)); return [a + 1, b + 1]; };
+  const ranges = { 1: span("EXECUTE IMMEDIATE", "END get_ecb_rate;"), 2: span("CURSOR c_hold IS", "isin IS NOT NULL"), 3: span("FUNCTION risk_country", "END risk_country;"), 4: span("flux nets du trimestre", "WHERE report_date = p_date;") };
+  const [a, b] = ranges[i];
+  let effect = "", visual = "";
+  if (i === 1) {
+    effect = t("d1e")(rangeTxt(D.clp.map(r => r[3])));
+    visual = `<table class="mini-tbl"><tr><th>${t("thQ")}</th><th>${t("thLost")}</th></tr>${D.clp.map(r => `<tr><td>${qlabel(r[0])}</td><td>${meur(r[3])}</td></tr>`).join("")}</table>`;
+  } else if (i === 2) {
+    effect = t("d2e")(rangeTxt(D.repo.map(r => r[1])));
+    visual = `<table class="mini-tbl"><tr><th>${t("thQ")}</th><th>${t("thLost")}</th></tr>${D.repo.map(r => `<tr><td>${qlabel(r[0])}</td><td>${meur(r[1])}</td></tr>`).join("")}</table>`;
+  } else if (i === 3) {
+    effect = t("d3e")();
+    const right = { "Wynn Macau Ltd": true, "International Workplace Group PLC": true };
+    visual = `<table class="mini-tbl"><tr><th>${t("thIssuer")}</th><th>${t("thInc")}</th><th>${t("thRisk")}</th><th>${t("thOk")}</th></tr>${D.country_rule.map(r => `<tr><td>${esc(r[0])}</td><td>${r[1]}</td><td>${r[2]}</td><td><span class="tag ${right[r[0]] ? "ok" : "ko"}">${right[r[0]] ? t("yes") : t("no")}</span></td></tr>`).join("")}</table>`;
+  } else {
+    const dec = D.reinvest.filter(r => r[1] > 0).map(r => r[1] / r[2]);
+    effect = t("d4e")(meur(dec[0]), meur(dec[1] ?? dec[0]));
+    visual = `<div class="legend"><span><i style="background:var(--s2)"></i>${t("legLegacy")}</span><span><i style="background:var(--s1)"></i>${t("legDbt")}</span></div><div class="chart-box" id="flowBox"><svg class="chart" id="flowChart"></svg><div class="tip" id="flowTip"></div></div>`;
+  }
+  $("defBody").innerHTML = `<div class="defect">
+      <div class="panel"><h4>${t("legacyCode")} · ${t("lines")} ${a}–${b}</h4><pre class="code legacy">${hl(plSnippet(a, b))}</pre>
+        <h4 style="margin-top:16px">${t("fixT")}</h4><pre class="code modern">${hl(SNIP[i].dbt)}</pre><p class="why">${t("d" + i + "w")}</p></div>
+      <div class="panel"><h4>${t("effectT")}</h4><p class="effect">${effect}</p>${visual}</div></div>`;
+  if (i === 4) drawFlows();
+}
+function drawFlows() {
+  const W = 560, H = 300, M = { l: 54, r: 10, t: 14, b: 34 };
+  const vals = Q.flatMap(q => [F[q].flows, F[q].lflows]);
+  const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const step = 50e6, ymin = Math.floor(lo / step) * step, ymax = Math.ceil(hi / step) * step || step;
+  const Y = v => M.t + (ymax - v) * (H - M.t - M.b) / (ymax - ymin);
+  const bw = (W - M.l - M.r) / Q.length, bar = Math.min(18, bw / 3);
+  let s = `<g class="grid">`; for (let v = ymin; v <= ymax; v += step) s += `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(v)}" y2="${Y(v)}"/>`;
+  s += `</g><g class="axis">`; for (let v = ymin; v <= ymax; v += step) s += `<text x="${M.l - 8}" y="${Y(v) + 4}" text-anchor="end">${nf(v / 1e6)}</text>`;
+  Q.forEach((q, k) => { const x = M.l + bw * k + bw / 2; s += `<text x="${x}" y="${H - 12}" text-anchor="middle">${new Date(q + "T12:00:00").toLocaleDateString(loc(), { month: "short", year: "2-digit" })}</text>`; });
+  s += `</g>`;
+  Q.forEach((q, k) => {
+    const x = M.l + bw * k + bw / 2;
+    [[F[q].lflows, "var(--s2)", -bar - 1], [F[q].flows, "var(--s1)", 1]].forEach(([v, c, dx]) => {
+      const y0 = Y(0), y1 = Y(v), top = Math.min(y0, y1), h = Math.max(1, Math.abs(y1 - y0));
+      s += `<rect x="${x + dx}" y="${top}" width="${bar}" height="${h}" rx="2" fill="${c}"/>`;
+    });
+    if (Math.abs(F[q].flows - F[q].lflows) > 1) s += `<text class="lab" x="${x}" y="${Math.min(Y(0), Y(F[q].flows), Y(F[q].lflows)) - 6}" text-anchor="middle">Δ</text>`;
+    s += `<rect class="hit" data-q="${q}" x="${M.l + bw * k}" y="${M.t}" width="${bw}" height="${H - M.t - M.b}" fill="transparent"/>`;
+  });
+  s += `<line class="zero" x1="${M.l}" x2="${W - M.r}" y1="${Y(0)}" y2="${Y(0)}"/>`;
+  const svg = $("flowChart"); svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.innerHTML = s;
+  svg.setAttribute("role", "img"); svg.setAttribute("aria-label", t("d4t"));
+  const tip = $("flowTip"), box = $("flowBox");
+  svg.querySelectorAll(".hit").forEach(h => {
+    const show = e => {
+      const q = h.dataset.q, r = box.getBoundingClientRect();
+      tip.innerHTML = `<b>${qlabel(q)}</b><table><tr><td><i style="display:inline-block;width:9px;height:9px;background:var(--s2);border-radius:2px"></i> ${t("legLegacy")}</td><td>${meur(F[q].lflows, 1, true)}</td></tr><tr><td><i style="display:inline-block;width:9px;height:9px;background:var(--s1);border-radius:2px"></i> ${t("legDbt")}</td><td>${meur(F[q].flows, 1, true)}</td></tr></table>`;
+      const x = e.clientX - r.left; tip.style.left = Math.min(Math.max(0, x + 12), r.width - 200) + "px"; tip.style.top = "6px"; tip.style.opacity = 1;
+    };
+    h.addEventListener("pointermove", show); h.addEventListener("pointerdown", show);
+    h.addEventListener("pointerleave", () => tip.style.opacity = 0);
+  });
+}
+
+/* ------- lineage + listing ------- */
+const G = Object.fromEntries(D.graph.map(n => [n.name, n]));
+const depth = {}; const dep = n => depth[n] ??= (G[n].deps.length ? 1 + Math.max(...G[n].deps.map(dep)) : 0);
+D.graph.forEach(n => dep(n.name));
+const cols = {}; D.graph.forEach(n => (cols[depth[n.name]] ||= []).push(n));
+Object.values(cols).forEach(c => c.sort((a, b) => a.name.localeCompare(b.name)));
+const NW = 228, NH = 30, GX = 38, GY = 12, PX = 16, PY = 38;
+const nC = Object.keys(cols).length, maxR = Math.max(...Object.values(cols).map(c => c.length));
+const DW = PX * 2 + nC * NW + (nC - 1) * GX, DH = PY + maxR * (NH + GY) + 10;
+const pos = {};
+Object.entries(cols).forEach(([d, c]) => { const h = c.length * (NH + GY) - GY, y0 = PY + (maxR * (NH + GY) - GY - h) / 2; c.forEach((n, i) => pos[n.name] = { x: PX + d * (NW + GX), y: y0 + i * (NH + GY) }); });
+function renderDag() {
+  const dag = $("dag"); dag.setAttribute("viewBox", `0 0 ${DW} ${DH}`);
+  let prev = "";
+  let s = Object.entries(cols).map(([d, c]) => { const l = [...new Set(c.map(n => n.layer))].join(" / "); const out = l === prev ? "" : `<text class="col" x="${PX + d * (NW + GX)}" y="22">${l}</text>`; prev = l; return out; }).join("");
+  D.graph.forEach(n => n.deps.forEach(p => { const a = pos[p], b = pos[n.name], x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2, mx = (x1 + x2) / 2; s += `<path class="edge" data-f="${p}" data-t="${n.name}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`; }));
+  s += D.graph.map(n => `<g class="node ${n.layer}" data-n="${n.name}" tabindex="0" role="button" aria-label="${n.name}"><rect x="${pos[n.name].x}" y="${pos[n.name].y}" width="${NW}" height="${NH}" rx="6"/><text x="${pos[n.name].x + 10}" y="${pos[n.name].y + 19.5}">${n.name}</text></g>`).join("");
+  dag.innerHTML = s;
+  dag.querySelectorAll(".node").forEach(g => { g.onclick = () => pickNode(g.dataset.n); g.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickNode(g.dataset.n); } }; });
+}
+const lineBlock = {}; D.blocks.forEach(b => { for (let i = b.lines[0]; i <= b.lines[1]; i++) lineBlock[i] = b.id; });
+function renderListing() {
+  $("listing").innerHTML = plLines.map((l, i) => { const n = i + 1, b = lineBlock[n]; return `<div class="l${b ? " inb" : ""}" data-line="${n}"${b ? ` data-b="${b}"` : ""}><span class="n">${n}</span><span>${hl(l) || " "}</span></div>`; }).join("");
+  $("listing").onclick = e => { const l = e.target.closest(".l.inb"); if (l) pickBlock(l.dataset.b, false); };
+}
+function renderBlockBtns() {
+  $("blockBtns").innerHTML = D.blocks.map(b => `<button type="button" data-b="${b.id}" aria-pressed="false">${t("plBlocks")[b.id]}</button>`).join("");
+  $("blockBtns").querySelectorAll("button").forEach(x => x.onclick = () => pickBlock(x.dataset.b, true));
+}
+let sel = { type: "block", id: "fx" };
+function light(nodes, blocks) {
+  const dag = $("dag"); dag.classList.toggle("dim", nodes.length > 0);
+  dag.querySelectorAll(".node").forEach(g => g.classList.toggle("on", nodes.includes(g.dataset.n)));
+  dag.querySelectorAll(".edge").forEach(e => e.classList.toggle("on", nodes.includes(e.dataset.f) && nodes.includes(e.dataset.t)));
+  $("listing").querySelectorAll(".l.inb").forEach(l => l.classList.toggle("sel", blocks.includes(l.dataset.b)));
+  $("blockBtns").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", blocks.includes(x.dataset.b)));
+}
+function scrollTo(line) {
+  const el = $("listing").querySelector(`[data-line="${line}"]`), li = $("listing");
+  if (el) li.scrollTo({ top: el.offsetTop - li.offsetTop - 10, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+function pickBlock(id, scroll) {
+  sel = { type: "block", id }; const b = D.blocks.find(x => x.id === id);
+  light(b.models, [id]); if (scroll) scrollTo(b.lines[0]);
+  $("detail").innerHTML = `<h3>${t("plBlocks")[id]}</h3><p class="muted">PL/SQL · ${t("lines")} ${b.lines[0]}–${b.lines[1]}</p><p>${t("plBlockTxt")[id]}</p><div class="chips">${b.models.map(m => `<button type="button" class="chip" data-m="${m}">${m}</button>`).join("")}</div>`;
+  $("detail").querySelectorAll(".chip").forEach(c => c.onclick = () => pickNode(c.dataset.m));
+}
+function pickNode(name) {
+  sel = { type: "node", id: name }; const n = G[name];
+  const near = new Set([name, ...n.deps]); D.graph.forEach(m => { if (m.deps.includes(name)) near.add(m.name); });
+  const blocks = D.blocks.filter(b => b.models.includes(name)).map(b => b.id);
+  light([...near], blocks); if (blocks.length) scrollTo(D.blocks.find(b => b.id === blocks[0]).lines[0]);
+  $("detail").innerHTML = `<h3 class="mono" style="font-size:17px">${name}</h3><p class="muted">${t("layer")[n.layer] || n.layer}</p>
+    ${n.description ? `<p>${esc(n.description)}</p>` : ""}
+    ${n.seeds.length ? `<p class="muted">${t("readsSeeds")} <span class="mono">${n.seeds.join(", ")}</span></p>` : ""}
+    ${blocks.length ? `<p class="muted" style="margin-bottom:0">${t("replaces")}</p><div class="chips">${blocks.map(b => `<button type="button" class="chip pl" data-b="${b}">${t("plBlocks")[b]}</button>`).join("")}</div>` : ""}
+    <h4 style="margin:4px 0 6px;font-size:14px;color:var(--ink-3)">${t("showSql")}</h4><pre class="code modern">${hl(n.sql)}</pre>`;
+  $("detail").querySelectorAll(".chip.pl").forEach(c => c.onclick = () => pickBlock(c.dataset.b, true));
+}
+
+/* ------- proof ------- */
+let fStatus = "all", fQ = "all";
+const stLabel = s => s === "identical" ? t("stIdentical") : s.includes("ISIN") ? t("stFixedIsin") : s.includes("ECB") ? t("stFixedFx") : t("stUnexplained");
+const stClass = s => s === "identical" ? "ok" : s.startsWith("fixed") ? "fx" : "ko";
+function renderProof() {
+  $("proofT").textContent = t("proofT");
+  $("big").innerHTML = `<div class="g"><b>${nIdent}</b><span>${t("bIdent")}</span></div><div class="f"><b>${nFixed}</b><span>${t("bFixed")}</span></div><div><b>${nUnexp}</b><span>${t("bUnexp")}</span></div>`;
+  $("statusSeg").innerHTML = [["all", t("fAll")], ["identical", t("fIdent")], ["fixed", t("fFixed")]].map(([k, l]) => `<button type="button" data-s="${k}" aria-pressed="${k === fStatus}">${l}</button>`).join("");
+  $("statusSeg").querySelectorAll("button").forEach(b => b.onclick = () => { fStatus = b.dataset.s; renderProof(); });
+  $("qSel").innerHTML = `<option value="all">${t("allQ")}</option>` + Q.map(q => `<option value="${q}" ${q === fQ ? "selected" : ""}>${qlabel(q)}</option>`).join("");
+  $("qSel").onchange = e => { fQ = e.target.value; renderProof(); };
+  const rows = D.recon.filter(r => (fQ === "all" || r[0] === fQ) && (fStatus === "all" || (fStatus === "identical" ? r[6] === "identical" : r[6].startsWith("fixed"))));
+  $("reconTbl").innerHTML = `<thead><tr><th>${t("thIssuer")}</th><th>${t("thCcy")}</th><th>${t("thLeg")}</th><th>${t("thDbt")}</th><th>${t("thSt")}</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td>${esc(r[2])}${fQ === "all" ? `<br><small class="muted">${qlabel(r[0])}</small>` : ""}</td><td>${r[3]}</td><td class="${r[4] == null ? "dash" : ""}">${r[4] == null ? "–" : nf(r[4], 2)}</td><td>${nf(r[5], 2)}</td><td><span class="tag ${stClass(r[6])}">${stLabel(r[6])}</span></td></tr>`).join("") + `</tbody>`;
+  $("fundTbl").innerHTML = `<tr><th>${t("thQ")}</th><th>${t("thSec")}</th><th>${t("thFlows")} (${t("legLegacy")} → dbt)</th><th>${t("thStatus")}</th></tr>` +
+    Q.map(q => { const f = F[q]; return `<tr><td>${qlabel(q)}</td><td>${meur(f.sec - f.lsec, 1, true)}</td><td>${meur(f.lflows, 1, true)} → ${meur(f.flows, 1, true)}</td><td><span class="tag ${f.status === "explained" ? "ok" : "ko"}">${f.status === "explained" ? t("explained") : f.status}</span></td></tr>`; }).join("");
+  const s = D.tests.status;
+  $("tests").innerHTML = `<h3 style="margin-bottom:4px">${t("testsT")}</h3>` + [[t("tPass"), s.pass || 0], [t("tWarn"), s.warn || 0], [t("tFail"), (s.fail || 0) + (s.error || 0)]].map(([a, b]) => `<div class="row"><span>${a}</span><span>${b}</span></div>`).join("") +
+    `<p class="muted" style="margin-top:10px">${D.tests.singular.map(x => `<span class="mono">${x}</span>`).join("<br>")}</p>`;
+}
+
+/* ------- fund ------- */
+let fQ2 = Q[Q.length - 1];
+function bars(el, list) {
+  const max = Math.max(...list.map(x => x[1]));
+  $(el).innerHTML = list.map(([k, v]) => `<div class="bar"><span class="mono">${k}</span><div class="t"><i style="width:${(v / max * 100).toFixed(1)}%"></i></div><span>${nf(v / 1e6, 1)}</span></div>`).join("");
+}
+function renderFund() {
+  $("qSel2").innerHTML = Q.map(q => `<option value="${q}" ${q === fQ2 ? "selected" : ""}>${qlabel(q)}</option>`).join("");
+  $("qSel2").onchange = e => { fQ2 = e.target.value; renderFund(); };
+  bars("ccyBars", D.by_currency.filter(r => r[0] === fQ2).map(r => [r[1], r[2]]));
+  const ct = D.by_country.filter(r => r[0] === fQ2).map(r => [r[1], r[2]]);
+  const top = ct.slice(0, 11), rest = ct.slice(11).reduce((a, r) => a + r[1], 0);
+  bars("ctyBars", rest > 0 ? [...top, [lang === "fr" ? "autres" : "other", rest]] : top);
+}
+
+/* ------- about ------- */
+function renderLinks() {
+  $("links").innerHTML = `<a href="${ME.linkedin}" target="_blank" rel="noopener">${t("lnk")} <span>${t("lnkS")}</span></a>
+    <button type="button" id="mailBtn">${t("mail")} <span id="mailTxt">${t("mailS")}</span></button>
+    <a href="${ME.github}" target="_blank" rel="noopener">${t("gh")} <span>${t("ghS")}</span></a>`;
+  $("mailBtn").onclick = () => { const a = ME.mail.join("@"); $("mailTxt").textContent = a; window.location.href = "mailto:" + a; };
+  ["ghTop", "ghHero"].forEach(id => $(id).href = ME.github);
+  $("badgeLink").href = ME.github + "/actions";
+  $("badgeImg").src = ME.github + "/actions/workflows/dbt_build.yml/badge.svg";
+}
+
+/* ------- i18n ------- */
+function apply() {
+  document.documentElement.lang = lang;
+  document.title = lang === "fr" ? "PL/SQL → dbt : transparisation d'un fonds" : "PL/SQL → dbt: a fund look-through";
+  document.querySelectorAll("[data-t]").forEach(el => { const v = t(el.dataset.t); if (typeof v === "string") el.textContent = v; });
+  document.querySelectorAll(".pill button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === lang));
+  renderHero(); renderDefTabs(); renderDef(); renderBlockBtns(); renderProof(); renderFund(); renderLinks();
+  $("builtAt").textContent = D.tests.generated_at.slice(0, 10);
+  sel.type === "block" ? pickBlock(sel.id, false) : pickNode(sel.id);
+}
+document.querySelectorAll(".pill button").forEach(b => b.onclick = () => { lang = b.dataset.lang; try { localStorage.setItem("lang", lang); } catch (e) {} apply(); });
+renderDag(); renderListing(); apply();
+</script>
+</body>
+</html>

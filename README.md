@@ -2,6 +2,8 @@
 
 [![dbt build](https://github.com/dahibmarouan/plsql-to-dbt/actions/workflows/dbt_build.yml/badge.svg)](https://github.com/dahibmarouan/plsql-to-dbt/actions/workflows/dbt_build.yml)
 
+**Le site : [dahibmarouan.github.io/plsql-to-dbt](https://dahibmarouan.github.io/plsql-to-dbt/)**, régénéré à chaque modification à partir des vrais résultats de dbt.
+
 Migration d'un package PL/SQL Oracle vers dbt, sur les **données publiques réelles** d'un fonds :
 les déclarations trimestrielles N-PORT d'*Oakmark International Small Cap Fund* publiées par la SEC,
 et les taux de change de référence de la BCE.
@@ -20,8 +22,8 @@ sa **transparisation en euros** : chaque position valorisée en EUR avec son pay
 
 | | |
 |---|---|
-| Vieux code | 1 package PL/SQL de 170 lignes |
-| Projet dbt | 10 modèles SQL, plus de 70 tests, une réconciliation automatique |
+| Vieux code | 1 package PL/SQL de 172 lignes |
+| Projet dbt | 9 modèles SQL, 58 tests, deux réconciliations automatiques avec le vieux code |
 | Positions | **492 sur 508 identiques au centime** au vieux code |
 | Écarts | **16**, tous expliqués par un défaut corrigé, **0 inexpliqué** (garanti par un test) |
 
@@ -47,6 +49,7 @@ models/staging/      une vue par source : noms, types, drapeaux
 models/intermediate/ le taux BCE à chaque fin de trimestre
 models/marts/        positions et synthèse en euros, et les deux réconciliations avec le vieux code
 tests/               tests génériques et singuliers (aucun écart inexpliqué, aucun taux trop ancien)
+site/                build_site.py + template.html : le site, construit depuis les résultats de dbt
 REVIEW.md            fiche de relecture : choix, limites, résultats détaillés
 ```
 
@@ -60,7 +63,9 @@ $env:DBT_PROFILES_DIR = "."         # PowerShell (macOS / Linux : export DBT_PRO
 dbt build
 ```
 
-Base locale DuckDB, rien d'autre à installer. Le même `dbt build` tourne automatiquement sur GitHub à chaque modification.
+Base locale DuckDB, rien d'autre à installer. Pour générer le site en local : `python site/build_site.py`, puis ouvrir `docs/index.html`.
+
+À chaque modification, GitHub Actions relance `dbt build`, reconstruit le site à partir des résultats et le publie sur GitHub Pages. Si un seul test échoue, le site n'est pas mis à jour.
 
 ## Limites
 
