@@ -1,0 +1,28 @@
+name: dbt build
+
+# Rebuilds the whole project and runs every test on each push.
+# If a single test fails (for example an unexplained gap with the legacy output), the run turns red.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  dbt-build:
+    runs-on: ubuntu-latest
+    env:
+      DBT_PROFILES_DIR: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dbt
+        run: pip install -r requirements.txt
+
+      - name: dbt build (seeds, models, tests, reconciliation)
+        run: dbt build
